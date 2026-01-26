@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { sendMessage } from '@/app/actions'
-import { Wifi, Thermometer, Info, Send, Loader2 } from 'lucide-react' // <--- Changed Thermostat to Thermometer
+import { Wifi, Thermometer, Info, Send, Loader2 } from 'lucide-react'
 
 type Message = { id: string; role: 'user' | 'model'; content: string }
 
@@ -26,28 +26,45 @@ export default function RoomChatPage() {
   async function handleSend(text: string) {
     if (!text.trim() || isLoading) return
     
-    // Generate ID safely
-    const tempId = crypto.randomUUID() // <--- Fixed "impure function" error
-    
-    // 1. Optimistic Update
+    // 1. Optimistic Update (Show user message immediately)
+    const tempId = crypto.randomUUID()
     const userMsg: Message = { id: tempId, role: 'user', content: text }
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setIsLoading(true)
 
-    // 2. Server Action
-    const { response } = await sendMessage(roomId, text, messages)
+    try {
+      // 2. Server Action with Error Handling
+      // We expect { success: boolean, response: string } from actions.ts
+      const result = await sendMessage(roomId, text, messages)
 
-    // 3. AI Response
-    const aiId = crypto.randomUUID() // <--- Fixed here too
-    const aiMsg: Message = { id: aiId, role: 'model', content: response }
-    setMessages(prev => [...prev, aiMsg])
-    setIsLoading(false)
+      if (!result.success) {
+        throw new Error(result.response || "Unknown error")
+      }
+
+      // 3. Success: Show AI Response
+      const aiId = crypto.randomUUID()
+      const aiMsg: Message = { id: aiId, role: 'model', content: result.response }
+      setMessages(prev => [...prev, aiMsg])
+
+    } catch (error) {
+      // 4. Failure: Show Friendly Error Message
+      console.error("Chat Error:", error)
+      const errorId = crypto.randomUUID()
+      setMessages(prev => [...prev, { 
+        id: errorId, 
+        role: 'model', 
+        content: "⚠️ System Offline: My database is currently sleeping. Please refresh the page or try again in 2 minutes!" 
+      }])
+    } finally {
+      // 5. Always stop loading
+      setIsLoading(false)
+    }
   }
 
   const quickActions = [
     { icon: Wifi, label: 'Wifi', prompt: 'What is the wifi password?' },
-    { icon: Thermometer, label: 'AC', prompt: 'How do I use the AC?' }, // <--- Updated Icon
+    { icon: Thermometer, label: 'AC', prompt: 'How do I use the AC?' },
     { icon: Info, label: 'Tips', prompt: 'What are some local tips?' },
   ]
 
