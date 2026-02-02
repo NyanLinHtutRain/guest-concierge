@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { sendMessage } from '@/app/actions'
-import { Wifi, Thermometer, Info, Send, Loader2 } from 'lucide-react'
+import { Wifi, Thermometer, Info, Send, Loader2, MapPin } from 'lucide-react'
+import ReactMarkdown from 'react-markdown' // <--- NEW IMPORT
+import remarkGfm from 'remark-gfm'         // <--- NEW IMPORT
 
 type Message = { id: string; role: 'user' | 'model'; content: string }
 
@@ -26,7 +28,6 @@ export default function RoomChatPage() {
   async function handleSend(text: string) {
     if (!text.trim() || isLoading) return
     
-    // 1. Optimistic Update (Show user message immediately)
     const tempId = crypto.randomUUID()
     const userMsg: Message = { id: tempId, role: 'user', content: text }
     setMessages(prev => [...prev, userMsg])
@@ -34,30 +35,25 @@ export default function RoomChatPage() {
     setIsLoading(true)
 
     try {
-      // 2. Server Action with Error Handling
-      // We expect { success: boolean, response: string } from actions.ts
       const result = await sendMessage(roomId, text, messages)
 
       if (!result.success) {
         throw new Error(result.response || "Unknown error")
       }
 
-      // 3. Success: Show AI Response
       const aiId = crypto.randomUUID()
       const aiMsg: Message = { id: aiId, role: 'model', content: result.response }
       setMessages(prev => [...prev, aiMsg])
 
     } catch (error) {
-      // 4. Failure: Show Friendly Error Message
       console.error("Chat Error:", error)
       const errorId = crypto.randomUUID()
       setMessages(prev => [...prev, { 
         id: errorId, 
         role: 'model', 
-        content: "⚠️ System Offline: My database is currently sleeping. Please refresh the page or try again in 2 minutes!" 
+        content: "⚠️ System Offline: Please refresh the page." 
       }])
     } finally {
-      // 5. Always stop loading
       setIsLoading(false)
     }
   }
@@ -65,7 +61,7 @@ export default function RoomChatPage() {
   const quickActions = [
     { icon: Wifi, label: 'Wifi', prompt: 'What is the wifi password?' },
     { icon: Thermometer, label: 'AC', prompt: 'How do I use the AC?' },
-    { icon: Info, label: 'Tips', prompt: 'What are some local tips?' },
+    { icon: Info, label: 'Food', prompt: 'What are the top 3 food recommendations nearby?' }, // <--- Changed for demo
   ]
 
   return (
@@ -103,12 +99,39 @@ export default function RoomChatPage() {
         <div className="space-y-4 pb-2">
           {messages.map((m) => (
             <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+              <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
                 m.role === 'user' 
                   ? 'bg-black text-white rounded-tr-none' 
                   : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200'
               }`}>
-                <span className="whitespace-pre-wrap">{m.content}</span>
+                {/* --- NEW: MARKDOWN RENDERER --- */}
+                {m.role === 'user' ? (
+                   <span>{m.content}</span>
+                ) : (
+                  <div className="markdown-content">
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        // 1. Make links blue and open in new tab
+                        a: ({node, ...props}) => (
+                          <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold hover:text-blue-800 flex items-center gap-1 inline-flex">
+                             {props.children} <MapPin className="w-3 h-3" />
+                          </a>
+                        ),
+                        // 2. Make images rounded and fit the bubble
+                        img: ({node, ...props}) => (
+                          <img {...props} className="rounded-lg mt-2 mb-1 w-full h-40 object-cover border border-slate-200" />
+                        ),
+                        // 3. Handle lists nicely
+                        ul: ({node, ...props}) => <ul {...props} className="list-disc pl-4 my-2 space-y-1" />,
+                        ol: ({node, ...props}) => <ol {...props} className="list-decimal pl-4 my-2 space-y-1" />
+                      }}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
+                {/* ----------------------------- */}
               </div>
             </div>
           ))}
@@ -134,7 +157,8 @@ export default function RoomChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question..."
-            className="flex-1 bg-slate-100 rounded-full px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-black/5 placeholder:text-slate-400"
+            // I added 'text-slate-900' below so your typing is black and visible
+            className="flex-1 bg-slate-100 text-slate-900 rounded-full px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-black/5 placeholder:text-slate-400"
           />
           <button 
             type="submit"
