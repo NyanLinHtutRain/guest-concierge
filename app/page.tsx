@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabase } from "@/utils/supabase";
-import { Wifi, MapPin, QrCode, ExternalLink, ShieldCheck } from "lucide-react";
+import { MapPin, QrCode, ShieldCheck, Pencil, Trash2, MessageSquare } from "lucide-react";
+import { deleteRoom } from './actions'
 
 // 1. Fetch data on the server
 async function getRooms() {
@@ -41,13 +42,12 @@ export default async function AdminDashboard() {
             <h2 className="text-3xl font-bold text-slate-900">Dashboard</h2>
             <p className="text-slate-500 mt-1">Manage your properties and guest access.</p>
           </div>
-          <a 
-            href="https://supabase.com/dashboard/project/mroasbwuhxhfsnkzuawc/editor/29654"
-            target="_blank"
+          <Link 
+            href="/add"
             className="bg-black text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors flex items-center gap-2"
           >
             + Add New Room
-          </a>
+          </Link>
         </div>
 
         {/* Stats Grid */}
@@ -80,48 +80,76 @@ export default async function AdminDashboard() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {rooms.map((room) => (
-                <div key={room.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow group">
+                <div key={room.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow group flex flex-col justify-between">
                   
                   {/* Card Header */}
-                  <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start">
-                    <div>
-                      <h4 className="font-bold text-lg text-slate-900">{room.name}</h4>
-                      <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                        <MapPin className="w-3 h-3" />
-                        <span className="font-mono">/{room.slug}</span>
+                  <div>
+                    <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-lg text-slate-900">{room.name}</h4>
+                        <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                          <MapPin className="w-3 h-3" />
+                          <span className="font-mono text-[10px] uppercase tracking-wide">/{room.slug}</span>
+                        </div>
                       </div>
+                      <a 
+                         href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://guest-concierge.vercel.app/${room.slug}`}
+                         target="_blank"
+                         className="w-8 h-8 rounded-full bg-white border flex items-center justify-center text-slate-400 hover:text-black hover:border-black transition-colors"
+                         title="Get QR Code"
+                      >
+                        <QrCode className="w-4 h-4" />
+                      </a>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-white border flex items-center justify-center text-slate-400">
-                      <Wifi className="w-4 h-4" />
+
+                    {/* Card Body */}
+                    <div className="p-5 space-y-3">
+                      <div className="text-sm">
+                        <span className="text-slate-400 text-xs uppercase font-bold">Wifi Pass:</span>
+                        <p className="font-mono bg-slate-100 inline-block px-2 py-1 rounded ml-2 text-slate-700 text-xs">{room.wifi_pass}</p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Card Body */}
-                  <div className="p-5 space-y-3">
-                    <div className="text-sm">
-                      <span className="text-slate-400 text-xs uppercase font-bold">Wifi Pass:</span>
-                      <p className="font-mono bg-slate-100 inline-block px-2 py-1 rounded ml-2 text-slate-700">{room.wifi_pass}</p>
-                    </div>
-                    
-                    {/* Action Buttons */}
-                    <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-100">
+                  {/* NEW ACTION BUTTONS (Test / Edit / Delete) */}
+                  <div className="p-4 pt-0">
+                    <div className="flex gap-2 pt-4 border-t border-slate-100">
+                      {/* Test Chat */}
                       <Link 
                         href={`/${room.slug}`} 
-                        className="flex items-center justify-center gap-2 bg-slate-900 text-white py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Test Chat
-                      </Link>
-                      <a 
-                        href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://guest-concierge.vercel.app/${room.slug}`}
                         target="_blank"
-                        className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors"
+                        className="flex-1 bg-slate-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
                       >
-                        <QrCode className="w-3 h-3" />
-                        Get QR
-                      </a>
+                        <MessageSquare className="w-4 h-4" /> Test
+                      </Link>
+                      
+                      {/* Edit Button */}
+                      <Link 
+                        href={`/edit/${room.slug}`}
+                        className="px-3 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors border border-slate-200"
+                        title="Edit Room"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Link>
+
+                      {/* Delete Button */}
+                      <form 
+                        action={async () => {
+                          'use server'
+                          await deleteRoom(room.slug)
+                        }}
+                      >
+                        <button 
+                          type="submit"
+                          className="px-3 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors border border-red-100"
+                          title="Delete Room"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </form>
                     </div>
                   </div>
+                  
                 </div>
               ))}
             </div>

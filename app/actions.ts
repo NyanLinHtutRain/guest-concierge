@@ -2,6 +2,8 @@
 
 import { supabase } from '@/utils/supabase'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
@@ -11,9 +13,10 @@ type Message = {
   id?: string
 }
 
+// --- 1. CHATBOT FUNCTION ---
 export async function sendMessage(roomId: string, message: string, history: Message[]) {
   try {
-    // 1. Fetch Room Data
+    // A. Fetch Room Data
     const { data: room, error } = await supabase
       .from('rooms')
       .select('*')
@@ -25,13 +28,13 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       return { success: false, response: "I couldn't find the room details." }
     }
 
-    // 2. Clean History
+    // B. Clean History
     const cleanHistory = history.map((msg) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     })).filter((_, i) => i !== 0 || history[0].role !== 'model')
 
-    // 3. THE POLITE SYSTEM PROMPT
+    // C. System Prompt
     const systemPrompt = `
       You are the Concierge for "${room.name}".
       
@@ -61,7 +64,7 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       - If asking for recommendations, provide 3 excellent options near the Address using bullet points.
     `
 
-    // 4. Call Gemini
+    // D. Call Gemini (Using your requested model version)
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash", 
       systemInstruction: {
@@ -83,4 +86,125 @@ export async function sendMessage(roomId: string, message: string, history: Mess
     if (err instanceof Error) errorMessage = err.message;
     return { success: false, response: `System Error: ${errorMessage}` }
   }
+}
+
+// --- 2. CREATE ROOM FUNCTION (UPDATED SECURITY) ---
+export async function createRoom(formData: FormData) {
+  'use server'
+  
+  const name = formData.get('name') as string
+  const address = formData.get('address') as string
+  const wifi_ssid = formData.get('wifi_ssid') as string
+  const wifi_pass = formData.get('wifi_pass') as string
+  const ac_guide = formData.get('ac_guide') as string
+  const rules = formData.get('rules') as string
+  
+  // 🔒 SECURITY UPGRADE: Generate Random Secret Key
+  // Instead of "the-loft", we generate "k92x-m4p1" so guests can't guess other rooms.
+  const randomCode = Math.random().toString(36).substring(2, 6) + '-' + Math.random().toString(36).substring(2, 6);
+  const slug = randomCode;
+
+  // Build the Guidebook
+  const checkin = formData.get('checkin') as string
+  const checkout = formData.get('checkout') as string
+  const trash = formData.get('trash') as string
+  const laundry = formData.get('laundry') as string
+  const facilities = formData.get('facilities') as string
+  const food = formData.get('food') as string
+  
+  const guidebookText = `
+    CHECK-IN: ${checkin}
+    CHECK-OUT: ${checkout}
+    TRASH DISPOSAL: ${trash}
+    LAUNDRY: ${laundry}
+    FACILITIES: ${facilities}
+    HOST RECOMMENDATIONS: ${food}
+  `
+
+  // Save to Supabase
+  const { error } = await supabase.from('rooms').insert({
+    name,       // Human name (e.g. "Room 101")
+    slug,       // Secret URL (e.g. "k92x-m4p1")
+    address,
+    wifi_ssid,
+    wifi_pass,
+    ac_guide,
+    rules,
+    guidebook: guidebookText
+  })
+
+  if (error) {
+    console.error('Error creating room:', error)
+    return { success: false, message: 'Failed to create room' }
+  }
+
+  redirect('/')
+}
+
+// --- 3. UPDATE ROOM ---
+export async function updateRoom(formData: FormData) {
+  'use server'
+  
+  const slug = formData.get('slug') as string
+  const name = formData.get('name') as string
+  const address = formData.get('address') as string
+  const wifi_ssid = formData.get('wifi_ssid') as string
+  const wifi_pass = formData.get('wifi_pass') as string
+  const ac_guide = formData.get('ac_guide') as string
+  const rules = formData.get('rules') as string
+  
+  // Rebuild Guidebook
+  const checkin = formData.get('checkin') as string
+  const checkout = formData.get('checkout') as string
+  const trash = formData.get('trash') as string
+  const laundry = formData.get('laundry') as string
+  const facilities = formData.get('facilities') as string
+  const food = formData.get('food') as string
+  
+  const guidebookText = `
+    CHECK-IN: ${checkin}
+    CHECK-OUT: ${checkout}
+    TRASH DISPOSAL: ${trash}
+    LAUNDRY: ${laundry}
+    FACILITIES: ${facilities}
+    HOST RECOMMENDATIONS: ${food}
+  `
+
+  const { error } = await supabase
+    .from('rooms')
+    .update({
+      name,
+      address,
+      wifi_ssid,
+      wifi_pass,
+      ac_guide,
+      rules,
+      guidebook: guidebookText
+    })
+    .eq('slug', slug)
+
+  if (error) {
+    console.error('Error updating room:', error)
+    return { success: false, message: 'Failed to update' }
+  }
+
+  revalidatePath('/')
+  redirect('/')
+}
+
+// --- 4. DELETE ROOM ---
+export async function deleteRoom(slug: string) {
+  'use server'
+  
+  const { error } = await supabase
+    .from('rooms')
+    .delete()
+    .eq('slug', slug)
+
+  if (error) {
+    console.error('Error deleting room:', error)
+    return { success: false, message: 'Failed to delete' }
+  }
+
+  revalidatePath('/')
 }
