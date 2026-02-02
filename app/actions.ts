@@ -1,6 +1,7 @@
 'use server'
 
-import { supabase } from '@/utils/supabase'
+// 1. IMPORT ONLY THE ADMIN CLIENT
+import { supabaseAdmin } from '@/utils/supabase-admin'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
@@ -16,8 +17,8 @@ type Message = {
 // --- 1. CHATBOT FUNCTION ---
 export async function sendMessage(roomId: string, message: string, history: Message[]) {
   try {
-    // A. Fetch Room Data
-    const { data: room, error } = await supabase
+    // FIX: Use supabaseAdmin to fetch room details (bypasses RLS)
+    const { data: room, error } = await supabaseAdmin
       .from('rooms')
       .select('*')
       .eq('slug', roomId)
@@ -64,7 +65,7 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       - If asking for recommendations, provide 3 excellent options near the Address using bullet points.
     `
 
-    // D. Call Gemini (Using your requested model version)
+    // D. Call Gemini
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash", 
       systemInstruction: {
@@ -88,7 +89,7 @@ export async function sendMessage(roomId: string, message: string, history: Mess
   }
 }
 
-// --- 2. CREATE ROOM FUNCTION (UPDATED SECURITY) ---
+// --- 2. CREATE ROOM FUNCTION ---
 export async function createRoom(formData: FormData) {
   'use server'
   
@@ -99,12 +100,9 @@ export async function createRoom(formData: FormData) {
   const ac_guide = formData.get('ac_guide') as string
   const rules = formData.get('rules') as string
   
-  // 🔒 SECURITY UPGRADE: Generate Random Secret Key
-  // Instead of "the-loft", we generate "k92x-m4p1" so guests can't guess other rooms.
   const randomCode = Math.random().toString(36).substring(2, 6) + '-' + Math.random().toString(36).substring(2, 6);
   const slug = randomCode;
 
-  // Build the Guidebook
   const checkin = formData.get('checkin') as string
   const checkout = formData.get('checkout') as string
   const trash = formData.get('trash') as string
@@ -121,10 +119,10 @@ export async function createRoom(formData: FormData) {
     HOST RECOMMENDATIONS: ${food}
   `
 
-  // Save to Supabase
-  const { error } = await supabase.from('rooms').insert({
-    name,       // Human name (e.g. "Room 101")
-    slug,       // Secret URL (e.g. "k92x-m4p1")
+  // FIX: Use supabaseAdmin
+  const { error } = await supabaseAdmin.from('rooms').insert({
+    name,
+    slug,
     address,
     wifi_ssid,
     wifi_pass,
@@ -153,7 +151,6 @@ export async function updateRoom(formData: FormData) {
   const ac_guide = formData.get('ac_guide') as string
   const rules = formData.get('rules') as string
   
-  // Rebuild Guidebook
   const checkin = formData.get('checkin') as string
   const checkout = formData.get('checkout') as string
   const trash = formData.get('trash') as string
@@ -170,7 +167,8 @@ export async function updateRoom(formData: FormData) {
     HOST RECOMMENDATIONS: ${food}
   `
 
-  const { error } = await supabase
+  // FIX: Use supabaseAdmin (Was previously 'supabase')
+  const { error } = await supabaseAdmin
     .from('rooms')
     .update({
       name,
@@ -196,7 +194,8 @@ export async function updateRoom(formData: FormData) {
 export async function deleteRoom(slug: string) {
   'use server'
   
-  const { error } = await supabase
+  // FIX: Use supabaseAdmin (Was previously 'supabase')
+  const { error } = await supabaseAdmin
     .from('rooms')
     .delete()
     .eq('slug', slug)

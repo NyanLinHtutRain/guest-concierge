@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { supabase } from "@/utils/supabase";
+import { supabaseAdmin } from "@/utils/supabase-admin";
 import { MapPin, QrCode, ShieldCheck, Pencil, Trash2, MessageSquare } from "lucide-react";
 import { deleteRoom } from './actions'
 
 // 1. Fetch data on the server
 async function getRooms() {
-  const { data: rooms, error } = await supabase
+  // Use 'supabaseAdmin' instead of 'supabase'
+  const { data: rooms, error } = await supabaseAdmin
     .from("rooms")
     .select("*")
     .order("name");

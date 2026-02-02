@@ -1,20 +1,21 @@
-import { supabase } from '@/utils/supabase'
+// 1. FIX: Import the Admin Client
+import { supabaseAdmin } from '@/utils/supabase-admin'
 import { updateRoom } from '@/app/actions'
 import Link from 'next/link'
 import { ArrowLeft, Save } from 'lucide-react'
 import { redirect } from 'next/navigation'
 
-// 1. Update the Type Definition: params is now a Promise
+// Update the Type Definition: params is now a Promise
 type Props = {
   params: Promise<{ slug: string }>
 }
 
 export default async function EditRoomPage({ params }: Props) {
-  // 2. AWAIT the params to get the slug
+  // AWAIT the params to get the slug
   const { slug } = await params
 
-  // 3. Fetch the existing data using the awaited slug
-  const { data: room } = await supabase
+  // 2. FIX: Use 'supabaseAdmin' to fetch data (Bypasses RLS lock)
+  const { data: room } = await supabaseAdmin
     .from('rooms')
     .select('*')
     .eq('slug', slug)
