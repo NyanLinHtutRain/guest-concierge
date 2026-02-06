@@ -14,27 +14,20 @@ type Message = {
 }
 
 // --- HELPER: Parse "One Box" Questions into JSON ---
-// Takes the single text block and creates one "Quick Questions" category
 function parseFaqData(formData: FormData) {
-  // 1. Get the big block of text from the single textarea
   const rawText = formData.get('faq_text') as string || ''
-  
-  // 2. Split by new line -> Clean up -> Filter empty lines
   const questions = rawText.split('\n').map(q => q.trim()).filter(q => q !== '')
   
-  // If no questions, return empty array
   if (questions.length === 0) return []
 
-  // 3. Return a single "Concierge Menu" category
   return [{
     title: "Quick Questions",
-    icon: "HelpCircle", // Uses the default icon
+    icon: "HelpCircle", 
     questions: questions
   }]
 }
 
 // --- 1. GET PUBLIC INFO ---
-// Fetches the room design and the FAQ list for the frontend
 export async function getRoomPublicInfo(slug: string) {
   const { data: room } = await supabaseAdmin
     .from('rooms')
@@ -45,7 +38,7 @@ export async function getRoomPublicInfo(slug: string) {
   return room
 }
 
-// --- 2. CHATBOT FUNCTION ---
+// --- 2. CHATBOT FUNCTION (UPDATED INTELLIGENCE) ---
 export async function sendMessage(roomId: string, message: string, history: Message[]) {
   try {
     const { data: room, error } = await supabaseAdmin
@@ -64,35 +57,35 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       parts: [{ text: msg.content }]
     })).filter((_, i) => i !== 0 || history[0].role !== 'model')
 
+    // --- NEW "SMART HYBRID" PROMPT ---
     const systemPrompt = `
       You are the Concierge for "${room.name}".
       
-      [KNOWLEDGE BASE - USE THIS TO ANSWER]
+      [YOUR KNOWLEDGE BASE - PRIORITY #1]
       - Address: ${room.address || "Address not provided"}
       - Wifi: ${room.wifi_ssid} / ${room.wifi_pass}
       - AC Guide: ${room.ac_guide}
       - House Rules: ${room.rules}
       
-      [FULL HANDBOOK & DETAILS]
+      [HANDBOOK & DETAILS - PRIORITY #2]
       ${room.guidebook}
 
-      [ALLOW LIST]
-      1. Room & Building (Wifi, AC, Pool, Gym, Check-in/out).
-      2. Food & Drink (Restaurants, Cafes, GrabFood, Markets).
-      3. Transportation (Grab, Trains, Traffic, Airports).
-      4. Essential Services (Laundry, ATM, Sim Cards, Clinics).
-      5. Local Tourism (Malls, Landmarks, Parks).
-      6. Emergency (Police, Fire, Host Contact).
+      [OPERATING INSTRUCTIONS]
+      1. **Property Questions:** If the user asks about the room (keys, wifi, inventory, appliances), check the KNOWLEDGE BASE first. 
+         - If the info is there -> Answer it.
+         - If the info is MISSING -> Do NOT guess. Say: "I don't have that specific detail in my handbook, please reach out to the host directly."
 
-      [TONE & STYLE]
-      - **Personality:** Warm, welcoming, and professional (5-Star Hotel Concierge).
-      - **Formatting:** Use Bullet Points (•) for recommendations.
-      - **Brevity:** Short, polite sentences.
+      2. **General & Local Questions:** If the user asks about things NOT in the handbook (e.g., "How to cook pasta?", "Nearest pharmacy?", "Weather?"), USE YOUR OWN AI KNOWLEDGE.
+         - You know the Property Address is: ${room.address}. Use this to recommend real nearby places if they ask.
+         - Be helpful! Act like a smart local friend.
 
-      [BEHAVIOR]
-      - If the answer is in the Knowledge Base, give it.
-      - If the answer is NOT in the Knowledge Base, say "Please contact the host for this information."
-      - If asking for recommendations, provide 3 excellent options near the Address.
+      3. **Tone:** Warm, professional, 5-Star Hotel Concierge. Helpful but concise.
+
+      [DISALLOW LIST - DO NOT DISCUSS]
+      - Politics or Religion (Politely change subject).
+      - Illegal activities.
+      - Sexual or NSFW content.
+      - Coding/Programming help (Say "I am a hotel concierge, I can't help with code").
     `
 
     const model = genAI.getGenerativeModel({ 
@@ -115,7 +108,7 @@ export async function sendMessage(roomId: string, message: string, history: Mess
   }
 }
 
-// --- 3. CREATE ROOM (Updated) ---
+// --- 3. CREATE ROOM ---
 export async function createRoom(formData: FormData) {
   'use server'
   
@@ -131,7 +124,6 @@ export async function createRoom(formData: FormData) {
   const randomCode = Math.random().toString(36).substring(2, 6) + '-' + Math.random().toString(36).substring(2, 6);
   const slug = randomCode;
 
-  // UPDATED: Using 'other_info' instead of food/host recommendations
   const guidebookText = `
     CHECK-IN: ${formData.get('checkin')}
     CHECK-OUT: ${formData.get('checkout')}
@@ -141,7 +133,6 @@ export async function createRoom(formData: FormData) {
     OTHER INFO: ${formData.get('other_info')} 
   `
 
-  // Process the Menu Buttons from the single text box
   const faq_payload = parseFaqData(formData)
 
   const { error } = await supabaseAdmin.from('rooms').insert({
@@ -155,7 +146,7 @@ export async function createRoom(formData: FormData) {
     logo_url,
     primary_color,
     guidebook: guidebookText,
-    faq_payload // <--- SAVE TO DB
+    faq_payload
   })
 
   if (error) {
@@ -166,13 +157,12 @@ export async function createRoom(formData: FormData) {
   redirect('/')
 }
 
-// --- 4. UPDATE ROOM (Updated) ---
+// --- 4. UPDATE ROOM ---
 export async function updateRoom(formData: FormData) {
   'use server'
   
   const slug = formData.get('slug') as string
   
-  // UPDATED: Using 'other_info' instead of food/host recommendations
   const guidebookText = `
     CHECK-IN: ${formData.get('checkin')}
     CHECK-OUT: ${formData.get('checkout')}
@@ -182,7 +172,6 @@ export async function updateRoom(formData: FormData) {
     OTHER INFO: ${formData.get('other_info')}
   `
 
-  // Process the Menu Buttons from the single text box
   const faq_payload = parseFaqData(formData)
 
   const { error } = await supabaseAdmin
@@ -197,7 +186,7 @@ export async function updateRoom(formData: FormData) {
       logo_url: formData.get('logo_url') as string,
       primary_color: formData.get('primary_color') as string,
       guidebook: guidebookText,
-      faq_payload // <--- UPDATE DB
+      faq_payload
     })
     .eq('slug', slug)
 
