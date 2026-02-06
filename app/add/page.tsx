@@ -100,9 +100,10 @@ export default function AddRoomPage() {
           {/* Section 3: The Guidebook */}
           <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
             <h2 className="font-bold text-lg border-b border-slate-200 pb-2 text-slate-900">3. House Guide</h2>
+            <p className="text-sm text-slate-500 mb-2">The AI reads this section to answer your guests questions.</p>
             
             <div>
-              <label className="block text-sm font-bold text-slate-900 mb-1">How to use AC?</label>
+              <label className="block text-sm font-bold text-slate-900 mb-1">AC Guide</label>
               <input 
                 name="ac_guide" 
                 type="text" 
@@ -151,20 +152,20 @@ export default function AddRoomPage() {
               </div>
           </div>
 
-          {/* Section 4: Recommendations */}
+          {/* Section 4: UPDATED - Handbooks */}
           <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
-            <h2 className="font-bold text-lg border-b border-slate-200 pb-2 text-slate-900">4. Host Favorites</h2>
+            <h2 className="font-bold text-lg border-b border-slate-200 pb-2 text-slate-900">4. Other Guides & Handbook Info</h2>
             <div>
-              <label className="block text-sm font-bold text-slate-900 mb-1">Top 3 Food Spots (Optional)</label>
+              <label className="block text-sm font-bold text-slate-900 mb-1">Extra Details (Parking, Sauna, Food, etc.)</label>
               <textarea 
-                name="food" 
-                placeholder="1. Nasi Lemak Village&#10;2. Bean Brothers Cafe&#10;3. Al-Safa Curry House" 
-                className="w-full p-3 border border-slate-300 rounded-lg h-24 text-slate-900 font-medium placeholder:text-slate-400 focus:ring-2 focus:ring-black/10 focus:border-slate-900 outline-none" 
+                name="other_info" 
+                placeholder="Parking: Lot B2-15&#10;Sauna: Open 8am-8pm&#10;Food: Cafe downstairs is great" 
+                className="w-full p-3 border border-slate-300 rounded-lg h-32 text-slate-900 font-medium placeholder:text-slate-400 focus:ring-2 focus:ring-black/10 outline-none" 
               />
             </div>
           </div>
 
-          {/* Section 5: Branding (The Agency Feature) */}
+          {/* Section 5: Branding */}
           <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
             <h2 className="font-bold text-lg border-b border-slate-200 pb-2 text-slate-900">5. Branding & Design</h2>
             
@@ -193,6 +194,18 @@ export default function AddRoomPage() {
                 <p className="text-xs text-slate-500 mt-1">Paste a link to their logo.</p>
               </div>
             </div>
+          </div>
+
+          {/* NEW: Section 6: ONE BOX QUESTIONS */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
+            <h2 className="font-bold text-lg border-b border-slate-200 pb-2 text-slate-900">6. Concierge Menu (The Questions)</h2>
+            <p className="text-sm text-slate-500">Paste your questions here (One per line). These become the clickable buttons for the guest.</p>
+            
+            <textarea 
+              name="faq_text" 
+              placeholder="What is the wifi password?&#10;How do I use the AC?&#10;Where do I throw trash?&#10;What is the check-out time?&#10;Best cafe nearby?" 
+              className="w-full p-3 border border-slate-300 rounded-lg h-64 text-slate-900 font-medium placeholder:text-slate-400 focus:ring-2 focus:ring-black/10 outline-none" 
+            />
           </div>
 
           <button type="submit" className="w-full bg-black text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors">

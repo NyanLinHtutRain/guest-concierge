@@ -13,51 +13,14 @@ import remarkGfm from 'remark-gfm'
 
 type Message = { id: string; role: 'user' | 'model'; content: string }
 
-// --- 1. THE FAQ "VAULT" DATA ---
-// We organize questions by category so it looks clean, not messy.
-const FAQ_CATEGORIES = [
-  {
-    title: "Essentials",
-    icon: Wifi,
-    questions: [
-      "What is the Wifi password?",
-      "How do I use the Air Conditioner?",
-      "Where do I throw the trash?",
-      "Is there a washing machine?",
-      "How do I use the hot water?"
-    ]
-  },
-  {
-    title: "Check-In / Out",
-    icon: ShieldAlert,
-    questions: [
-      "What is the check-out time?",
-      "Can I have a late check-out?",
-      "Where do I leave the keys?",
-      "How do I get into the gym/pool?"
-    ]
-  },
-  {
-    title: "Food & Local",
-    icon: Coffee,
-    questions: [
-      "What are the top 3 restaurants nearby?",
-      "Where is the nearest convenience store?",
-      "Best place for coffee?",
-      "Any night markets nearby?"
-    ]
-  },
-  {
-    title: "Transport",
-    icon: Car,
-    questions: [
-      "How do I get a Grab/Taxi here?",
-      "Where is the nearest train station?",
-      "Parking information?",
-      "How far is the airport?"
-    ]
-  }
-]
+// NEW: Helper to map string names from DB to real Icons
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ICON_MAP: Record<string, any> = {
+  "Wifi": Wifi,
+  "ShieldAlert": ShieldAlert,
+  "Coffee": Coffee,
+  "Car": Car
+}
 
 export default function RoomChatPage() {
   const params = useParams()
@@ -69,15 +32,18 @@ export default function RoomChatPage() {
     { id: 'welcome', role: 'model', content: 'Welcome! I am your digital concierge. Tap the **Menu** button below for quick questions, or type anything!' }
   ])
   
+  // BRANDING STATE
   const [brand, setBrand] = useState({ 
     name: roomId.replace('-', ' '), 
     color: '#000000', 
     logo: '' 
   })
-  
-  // NEW: State for the FAQ Modal
-  const [isFaqOpen, setIsFaqOpen] = useState(false)
 
+  // NEW: DYNAMIC FAQ STATE
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [faqs, setFaqs] = useState<any[]>([]) 
+  
+  const [isFaqOpen, setIsFaqOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -88,6 +54,16 @@ export default function RoomChatPage() {
           color: data.primary_color || '#000000',
           logo: data.logo_url || ''
         })
+        
+        // NEW: Load the menu questions from Database
+        if (data.faq_payload && Array.isArray(data.faq_payload) && data.faq_payload.length > 0) {
+          setFaqs(data.faq_payload)
+        } else {
+          // Fallback if nothing saved yet
+          setFaqs([
+            { title: "Essentials", icon: "Wifi", questions: ["What is the wifi password?", "How do I use the AC?"] }
+          ])
+        }
       }
     })
   }, [roomId])
@@ -98,9 +74,7 @@ export default function RoomChatPage() {
 
   async function handleSend(text: string) {
     if (!text.trim() || isLoading) return
-    
-    // Close modal if open
-    setIsFaqOpen(false)
+    setIsFaqOpen(false) // Close modal
 
     const tempId = crypto.randomUUID()
     const userMsg: Message = { id: tempId, role: 'user', content: text }
@@ -135,18 +109,18 @@ export default function RoomChatPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-slate-50 font-sans max-w-md mx-auto shadow-2xl overflow-hidden relative">
       
-      {/* --- 2. MODERN HEADER (Glassmorphism) --- */}
+      {/* HEADER */}
       <header 
         className="absolute top-0 left-0 right-0 p-4 z-20 transition-all duration-500 backdrop-blur-md bg-white/80 border-b border-white/20"
       >
         <div className="flex items-center gap-3">
           {brand.logo ? (
-// eslint-disable-next-line @next/next/no-img-element
-          <img 
-            src={brand.logo} 
-            alt="Logo" 
-            className="h-12 w-auto object-contain" 
-          />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img 
+              src={brand.logo} 
+              alt="Logo" 
+              className="h-12 w-auto object-contain" 
+            />
           ) : (
              <div className="w-10 h-10 rounded-full bg-slate-200 animate-pulse" />
           )}
@@ -162,9 +136,8 @@ export default function RoomChatPage() {
         </div>
       </header>
 
-      {/* --- 3. CHAT AREA --- */}
+      {/* CHAT AREA */}
       <main className="flex-1 overflow-y-auto pt-24 pb-32 px-4 space-y-6 bg-slate-50 scroll-smooth">
-        
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
             <div 
@@ -203,7 +176,6 @@ export default function RoomChatPage() {
             </div>
           </div>
         ))}
-        
         {isLoading && (
           <div className="flex justify-start">
              <div className="bg-white border px-4 py-3 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
@@ -215,15 +187,12 @@ export default function RoomChatPage() {
         <div ref={bottomRef} />
       </main>
 
-      {/* --- 4. FLOATING FOOTER --- */}
+      {/* FOOTER */}
       <footer className="absolute bottom-6 left-4 right-4 z-20">
         <div className="bg-white rounded-[2rem] shadow-xl border border-slate-100 p-2 flex items-center gap-2 pr-2 pl-4">
-          
-          {/* THE NEW "FAQ MENU" BUTTON */}
           <button 
             onClick={() => setIsFaqOpen(true)}
             className="p-2.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
-            title="Open Menu"
           >
             <HelpCircle className="w-5 h-5" />
           </button>
@@ -250,14 +219,10 @@ export default function RoomChatPage() {
         </div>
       </footer>
 
-      {/* --- 5. THE FAQ DRAWER (MODAL) --- */}
+      {/* FAQ DRAWER (DYNAMIC) */}
       {isFaqOpen && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end bg-black/20 backdrop-blur-sm animate-in fade-in duration-200">
-          
-          {/* Click outside to close */}
           <div className="flex-1" onClick={() => setIsFaqOpen(false)} />
-          
-          {/* Drawer Content */}
           <div className="bg-white rounded-t-[2rem] shadow-2xl p-6 pb-10 max-h-[80vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
             
             <div className="flex justify-between items-center mb-6">
@@ -274,26 +239,31 @@ export default function RoomChatPage() {
             </div>
 
             <div className="space-y-6">
-              {FAQ_CATEGORIES.map((cat) => (
-                <div key={cat.title}>
-                  <div className="flex items-center gap-2 mb-3 text-slate-400">
-                    <cat.icon className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider">{cat.title}</span>
+              {/* NEW: Iterate over Dynamic FAQs */}
+              {faqs.map((cat, idx) => {
+                // Map the string icon name to the real component
+                const IconComponent = ICON_MAP[cat.icon] || HelpCircle
+                return (
+                  <div key={idx}>
+                    <div className="flex items-center gap-2 mb-3 text-slate-400">
+                      <IconComponent className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase tracking-wider">{cat.title}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {cat.questions.map((q: string) => (
+                        <button
+                          key={q}
+                          onClick={() => handleSend(q)}
+                          className="w-full text-left p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100 flex justify-between items-center group active:scale-[0.98]"
+                        >
+                          <span className="text-slate-700 font-medium text-sm">{q}</span>
+                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    {cat.questions.map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => handleSend(q)}
-                        className="w-full text-left p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100 flex justify-between items-center group active:scale-[0.98]"
-                      >
-                        <span className="text-slate-700 font-medium text-sm">{q}</span>
-                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
           </div>
