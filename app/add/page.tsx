@@ -164,6 +164,37 @@ export default function AddRoomPage() {
             </div>
           </div>
 
+          {/* Section 5: Branding (The Agency Feature) */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
+            <h2 className="font-bold text-lg border-b border-slate-200 pb-2 text-slate-900">5. Branding & Design</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-1">Brand Color</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    name="primary_color" 
+                    type="color" 
+                    defaultValue="#000000"
+                    className="h-10 w-20 cursor-pointer border border-slate-300 rounded overflow-hidden" 
+                  />
+                  <span className="text-xs text-slate-500">Click to pick color</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-1">Logo URL</label>
+                <input 
+                  name="logo_url" 
+                  type="url" 
+                  placeholder="https://..." 
+                  className="w-full p-3 border border-slate-300 rounded-lg text-slate-900 font-medium placeholder:text-slate-400 focus:ring-2 focus:ring-black/10 focus:border-slate-900 outline-none" 
+                />
+                <p className="text-xs text-slate-500 mt-1">Paste a link to their logo.</p>
+              </div>
+            </div>
+          </div>
+
           <button type="submit" className="w-full bg-black text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors">
             <Save className="w-5 h-5" />
             Create Property

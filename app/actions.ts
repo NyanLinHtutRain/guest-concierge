@@ -4,44 +4,8 @@ import { supabaseAdmin } from '@/utils/supabase-admin'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { z } from 'zod' // NEW: Validation Library
-import crypto from 'crypto' // NEW: Native Crypto for secure slugs
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-
-// --- SCHEMAS (Input Validation) ---
-const RoomSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  address: z.string().min(1, "Address is required"),
-  wifi_ssid: z.string().min(1, "Wifi Name is required"),
-  wifi_pass: z.string().min(1, "Wifi Password is required"),
-  checkin: z.string().optional(),
-  checkout: z.string().optional(),
-  ac_guide: z.string().optional(),
-  rules: z.string().optional(),
-  trash: z.string().optional(),
-  laundry: z.string().optional(),
-  facilities: z.string().optional(),
-  food: z.string().optional(),
-  // For update only
-  slug: z.string().optional(),
-})
-
-// --- HELPER: Secure Slug Generator ---
-// Generates format like: "kx92-m2p1" (Cryptographically secure)
-function generateSecureSlug() {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-  const randomBytes = crypto.randomBytes(8)
-  let result = ''
-  
-  // Create two groups of 4 chars
-  for (let i = 0; i < 8; i++) {
-    const index = randomBytes[i] % chars.length
-    result += chars[index]
-    if (i === 3) result += '-'
-  }
-  return result
-}
 
 type Message = {
   role: string
@@ -49,7 +13,19 @@ type Message = {
   id?: string
 }
 
-// --- 1. CHATBOT FUNCTION ---
+// --- 1. NEW: PUBLIC BRANDING FETCH ---
+// This allows the Chat Page to get the design without needing the Wifi Password/Rules yet.
+export async function getRoomPublicInfo(slug: string) {
+  const { data: room } = await supabaseAdmin
+    .from('rooms')
+    .select('name, logo_url, primary_color')
+    .eq('slug', slug)
+    .single()
+  
+  return room
+}
+
+// --- 2. CHATBOT FUNCTION (Unchanged) ---
 export async function sendMessage(roomId: string, message: string, history: Message[]) {
   try {
     const { data: room, error } = await supabaseAdmin
@@ -88,12 +64,12 @@ export async function sendMessage(roomId: string, message: string, history: Mess
 
       [TONE & STYLE]
       - **Personality:** Warm, welcoming, and professional (5-Star Hotel Concierge).
-      - **Formatting:** Use Bullet Points (•) for recommendations or instructions.
+      - **Formatting:** Use Bullet Points (•) for recommendations or instructions to keep it easy to read.
       - **Brevity:** Do not write long essays, but use complete, polite sentences. 
 
       [BEHAVIOR]
       - If the user asks about a forbidden topic (Coding, Politics), politely decline.
-      - If asking for recommendations, provide 3 excellent options near the Address.
+      - If asking for recommendations, provide 3 excellent options near the Address using bullet points.
     `
 
     const model = genAI.getGenerativeModel({ 
@@ -116,42 +92,50 @@ export async function sendMessage(roomId: string, message: string, history: Mess
   }
 }
 
-// --- 2. CREATE ROOM FUNCTION ---
+// --- 3. CREATE ROOM (Updated) ---
 export async function createRoom(formData: FormData) {
   'use server'
   
-  // A. VALIDATION: Parse and validate inputs using Zod
-  const rawData = Object.fromEntries(formData.entries())
-  const validation = RoomSchema.safeParse(rawData)
-
-  if (!validation.success) {
-    console.error("Validation Failed:", validation.error.flatten())
-    return { success: false, message: 'Invalid input data' }
-  }
-
-  const data = validation.data
+  const name = formData.get('name') as string
+  const address = formData.get('address') as string
+  const wifi_ssid = formData.get('wifi_ssid') as string
+  const wifi_pass = formData.get('wifi_pass') as string
+  const ac_guide = formData.get('ac_guide') as string
+  const rules = formData.get('rules') as string
   
-  // B. SECURE SLUG: Use crypto instead of Math.random
-  const slug = generateSecureSlug()
+  // NEW: Get Branding Info
+  const logo_url = formData.get('logo_url') as string
+  const primary_color = formData.get('primary_color') as string
+  
+  const randomCode = Math.random().toString(36).substring(2, 6) + '-' + Math.random().toString(36).substring(2, 6);
+  const slug = randomCode;
 
-  // Construct the guidebook text blob
+  const checkin = formData.get('checkin') as string
+  const checkout = formData.get('checkout') as string
+  const trash = formData.get('trash') as string
+  const laundry = formData.get('laundry') as string
+  const facilities = formData.get('facilities') as string
+  const food = formData.get('food') as string
+  
   const guidebookText = `
-    CHECK-IN: ${data.checkin}
-    CHECK-OUT: ${data.checkout}
-    TRASH DISPOSAL: ${data.trash}
-    LAUNDRY: ${data.laundry}
-    FACILITIES: ${data.facilities}
-    HOST RECOMMENDATIONS: ${data.food}
+    CHECK-IN: ${checkin}
+    CHECK-OUT: ${checkout}
+    TRASH DISPOSAL: ${trash}
+    LAUNDRY: ${laundry}
+    FACILITIES: ${facilities}
+    HOST RECOMMENDATIONS: ${food}
   `
 
   const { error } = await supabaseAdmin.from('rooms').insert({
-    name: data.name,
+    name,
     slug,
-    address: data.address,
-    wifi_ssid: data.wifi_ssid,
-    wifi_pass: data.wifi_pass,
-    ac_guide: data.ac_guide,
-    rules: data.rules,
+    address,
+    wifi_ssid,
+    wifi_pass,
+    ac_guide,
+    rules,
+    logo_url,        // <--- NEW
+    primary_color,   // <--- NEW
     guidebook: guidebookText
   })
 
@@ -163,39 +147,49 @@ export async function createRoom(formData: FormData) {
   redirect('/')
 }
 
-// --- 3. UPDATE ROOM ---
+// --- 4. UPDATE ROOM (Updated) ---
 export async function updateRoom(formData: FormData) {
   'use server'
   
-  const rawData = Object.fromEntries(formData.entries())
-  const validation = RoomSchema.safeParse(rawData)
+  const slug = formData.get('slug') as string
+  const name = formData.get('name') as string
+  const address = formData.get('address') as string
+  const wifi_ssid = formData.get('wifi_ssid') as string
+  const wifi_pass = formData.get('wifi_pass') as string
+  const ac_guide = formData.get('ac_guide') as string
+  const rules = formData.get('rules') as string
 
-  if (!validation.success || !rawData.slug) {
-    console.error("Validation Failed:", validation.error?.flatten())
-    return { success: false, message: 'Invalid input data' }
-  }
-
-  const data = validation.data
-  const slug = rawData.slug as string // Slug is passed via hidden field
-
+  // NEW: Get Branding Info
+  const logo_url = formData.get('logo_url') as string
+  const primary_color = formData.get('primary_color') as string
+  
+  const checkin = formData.get('checkin') as string
+  const checkout = formData.get('checkout') as string
+  const trash = formData.get('trash') as string
+  const laundry = formData.get('laundry') as string
+  const facilities = formData.get('facilities') as string
+  const food = formData.get('food') as string
+  
   const guidebookText = `
-    CHECK-IN: ${data.checkin}
-    CHECK-OUT: ${data.checkout}
-    TRASH DISPOSAL: ${data.trash}
-    LAUNDRY: ${data.laundry}
-    FACILITIES: ${data.facilities}
-    HOST RECOMMENDATIONS: ${data.food}
+    CHECK-IN: ${checkin}
+    CHECK-OUT: ${checkout}
+    TRASH DISPOSAL: ${trash}
+    LAUNDRY: ${laundry}
+    FACILITIES: ${facilities}
+    HOST RECOMMENDATIONS: ${food}
   `
 
   const { error } = await supabaseAdmin
     .from('rooms')
     .update({
-      name: data.name,
-      address: data.address,
-      wifi_ssid: data.wifi_ssid,
-      wifi_pass: data.wifi_pass,
-      ac_guide: data.ac_guide,
-      rules: data.rules,
+      name,
+      address,
+      wifi_ssid,
+      wifi_pass,
+      ac_guide,
+      rules,
+      logo_url,       // <--- NEW
+      primary_color,  // <--- NEW
       guidebook: guidebookText
     })
     .eq('slug', slug)
@@ -209,19 +203,12 @@ export async function updateRoom(formData: FormData) {
   redirect('/')
 }
 
-// --- 4. DELETE ROOM ---
 export async function deleteRoom(slug: string) {
   'use server'
-  
-  const { error } = await supabaseAdmin
-    .from('rooms')
-    .delete()
-    .eq('slug', slug)
-
+  const { error } = await supabaseAdmin.from('rooms').delete().eq('slug', slug)
   if (error) {
     console.error('Error deleting room:', error)
     return { success: false, message: 'Failed to delete' }
   }
-
   revalidatePath('/')
 }
