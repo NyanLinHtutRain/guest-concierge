@@ -25,8 +25,12 @@ export function middleware(req: NextRequest) {
     const authValue = basicAuth.split(' ')[1]
     const [user, pwd] = atob(authValue).split(':')
 
-    // 🛑 CHANGE YOUR PASSWORD HERE 🛑
-    if (user === 'admin' && pwd === 'password123') {
+    // FIX: Load credentials from Environment Variables
+    // If variables aren't set, this defaults to empty strings to prevent accidental access
+    const adminUser = process.env.ADMIN_USER
+    const adminPass = process.env.ADMIN_PASSWORD
+
+    if (adminUser && adminPass && user === adminUser && pwd === adminPass) {
       // Password Correct! 
       // We create the response allowing them in...
       const response = NextResponse.next()

@@ -1,12 +1,47 @@
 'use server'
 
-// 1. IMPORT ONLY THE ADMIN CLIENT
 import { supabaseAdmin } from '@/utils/supabase-admin'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod' // NEW: Validation Library
+import crypto from 'crypto' // NEW: Native Crypto for secure slugs
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+
+// --- SCHEMAS (Input Validation) ---
+const RoomSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  address: z.string().min(1, "Address is required"),
+  wifi_ssid: z.string().min(1, "Wifi Name is required"),
+  wifi_pass: z.string().min(1, "Wifi Password is required"),
+  checkin: z.string().optional(),
+  checkout: z.string().optional(),
+  ac_guide: z.string().optional(),
+  rules: z.string().optional(),
+  trash: z.string().optional(),
+  laundry: z.string().optional(),
+  facilities: z.string().optional(),
+  food: z.string().optional(),
+  // For update only
+  slug: z.string().optional(),
+})
+
+// --- HELPER: Secure Slug Generator ---
+// Generates format like: "kx92-m2p1" (Cryptographically secure)
+function generateSecureSlug() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  const randomBytes = crypto.randomBytes(8)
+  let result = ''
+  
+  // Create two groups of 4 chars
+  for (let i = 0; i < 8; i++) {
+    const index = randomBytes[i] % chars.length
+    result += chars[index]
+    if (i === 3) result += '-'
+  }
+  return result
+}
 
 type Message = {
   role: string
@@ -17,7 +52,6 @@ type Message = {
 // --- 1. CHATBOT FUNCTION ---
 export async function sendMessage(roomId: string, message: string, history: Message[]) {
   try {
-    // FIX: Use supabaseAdmin to fetch room details (bypasses RLS)
     const { data: room, error } = await supabaseAdmin
       .from('rooms')
       .select('*')
@@ -29,13 +63,11 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       return { success: false, response: "I couldn't find the room details." }
     }
 
-    // B. Clean History
     const cleanHistory = history.map((msg) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     })).filter((_, i) => i !== 0 || history[0].role !== 'model')
 
-    // C. System Prompt
     const systemPrompt = `
       You are the Concierge for "${room.name}".
       
@@ -56,16 +88,14 @@ export async function sendMessage(roomId: string, message: string, history: Mess
 
       [TONE & STYLE]
       - **Personality:** Warm, welcoming, and professional (5-Star Hotel Concierge).
-      - **Formatting:** Use Bullet Points (•) for recommendations or instructions to keep it easy to read.
+      - **Formatting:** Use Bullet Points (•) for recommendations or instructions.
       - **Brevity:** Do not write long essays, but use complete, polite sentences. 
-      - **Example:** Instead of just "Use white remote," say "Certainly! To use the AC, please use the white remote located on the wall."
 
       [BEHAVIOR]
-      - If the user asks about a forbidden topic (Coding, Politics), politely decline: "I apologize, but I am here to assist only with your stay and local travel needs."
-      - If asking for recommendations, provide 3 excellent options near the Address using bullet points.
+      - If the user asks about a forbidden topic (Coding, Politics), politely decline.
+      - If asking for recommendations, provide 3 excellent options near the Address.
     `
 
-    // D. Call Gemini
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash", 
       systemInstruction: {
@@ -74,10 +104,7 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       }
     })
 
-    const chat = model.startChat({
-      history: cleanHistory
-    })
-
+    const chat = model.startChat({ history: cleanHistory })
     const result = await chat.sendMessage(message)
     return { success: true, response: result.response.text() }
 
@@ -93,41 +120,38 @@ export async function sendMessage(roomId: string, message: string, history: Mess
 export async function createRoom(formData: FormData) {
   'use server'
   
-  const name = formData.get('name') as string
-  const address = formData.get('address') as string
-  const wifi_ssid = formData.get('wifi_ssid') as string
-  const wifi_pass = formData.get('wifi_pass') as string
-  const ac_guide = formData.get('ac_guide') as string
-  const rules = formData.get('rules') as string
-  
-  const randomCode = Math.random().toString(36).substring(2, 6) + '-' + Math.random().toString(36).substring(2, 6);
-  const slug = randomCode;
+  // A. VALIDATION: Parse and validate inputs using Zod
+  const rawData = Object.fromEntries(formData.entries())
+  const validation = RoomSchema.safeParse(rawData)
 
-  const checkin = formData.get('checkin') as string
-  const checkout = formData.get('checkout') as string
-  const trash = formData.get('trash') as string
-  const laundry = formData.get('laundry') as string
-  const facilities = formData.get('facilities') as string
-  const food = formData.get('food') as string
+  if (!validation.success) {
+    console.error("Validation Failed:", validation.error.flatten())
+    return { success: false, message: 'Invalid input data' }
+  }
+
+  const data = validation.data
   
+  // B. SECURE SLUG: Use crypto instead of Math.random
+  const slug = generateSecureSlug()
+
+  // Construct the guidebook text blob
   const guidebookText = `
-    CHECK-IN: ${checkin}
-    CHECK-OUT: ${checkout}
-    TRASH DISPOSAL: ${trash}
-    LAUNDRY: ${laundry}
-    FACILITIES: ${facilities}
-    HOST RECOMMENDATIONS: ${food}
+    CHECK-IN: ${data.checkin}
+    CHECK-OUT: ${data.checkout}
+    TRASH DISPOSAL: ${data.trash}
+    LAUNDRY: ${data.laundry}
+    FACILITIES: ${data.facilities}
+    HOST RECOMMENDATIONS: ${data.food}
   `
 
-  // FIX: Use supabaseAdmin
   const { error } = await supabaseAdmin.from('rooms').insert({
-    name,
+    name: data.name,
     slug,
-    address,
-    wifi_ssid,
-    wifi_pass,
-    ac_guide,
-    rules,
+    address: data.address,
+    wifi_ssid: data.wifi_ssid,
+    wifi_pass: data.wifi_pass,
+    ac_guide: data.ac_guide,
+    rules: data.rules,
     guidebook: guidebookText
   })
 
@@ -143,40 +167,35 @@ export async function createRoom(formData: FormData) {
 export async function updateRoom(formData: FormData) {
   'use server'
   
-  const slug = formData.get('slug') as string
-  const name = formData.get('name') as string
-  const address = formData.get('address') as string
-  const wifi_ssid = formData.get('wifi_ssid') as string
-  const wifi_pass = formData.get('wifi_pass') as string
-  const ac_guide = formData.get('ac_guide') as string
-  const rules = formData.get('rules') as string
-  
-  const checkin = formData.get('checkin') as string
-  const checkout = formData.get('checkout') as string
-  const trash = formData.get('trash') as string
-  const laundry = formData.get('laundry') as string
-  const facilities = formData.get('facilities') as string
-  const food = formData.get('food') as string
-  
+  const rawData = Object.fromEntries(formData.entries())
+  const validation = RoomSchema.safeParse(rawData)
+
+  if (!validation.success || !rawData.slug) {
+    console.error("Validation Failed:", validation.error?.flatten())
+    return { success: false, message: 'Invalid input data' }
+  }
+
+  const data = validation.data
+  const slug = rawData.slug as string // Slug is passed via hidden field
+
   const guidebookText = `
-    CHECK-IN: ${checkin}
-    CHECK-OUT: ${checkout}
-    TRASH DISPOSAL: ${trash}
-    LAUNDRY: ${laundry}
-    FACILITIES: ${facilities}
-    HOST RECOMMENDATIONS: ${food}
+    CHECK-IN: ${data.checkin}
+    CHECK-OUT: ${data.checkout}
+    TRASH DISPOSAL: ${data.trash}
+    LAUNDRY: ${data.laundry}
+    FACILITIES: ${data.facilities}
+    HOST RECOMMENDATIONS: ${data.food}
   `
 
-  // FIX: Use supabaseAdmin (Was previously 'supabase')
   const { error } = await supabaseAdmin
     .from('rooms')
     .update({
-      name,
-      address,
-      wifi_ssid,
-      wifi_pass,
-      ac_guide,
-      rules,
+      name: data.name,
+      address: data.address,
+      wifi_ssid: data.wifi_ssid,
+      wifi_pass: data.wifi_pass,
+      ac_guide: data.ac_guide,
+      rules: data.rules,
       guidebook: guidebookText
     })
     .eq('slug', slug)
@@ -194,7 +213,6 @@ export async function updateRoom(formData: FormData) {
 export async function deleteRoom(slug: string) {
   'use server'
   
-  // FIX: Use supabaseAdmin (Was previously 'supabase')
   const { error } = await supabaseAdmin
     .from('rooms')
     .delete()

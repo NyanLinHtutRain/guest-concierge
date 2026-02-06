@@ -1,175 +1,27 @@
-'use client'
+import { supabaseAdmin } from '@/utils/supabase-admin'
+import { notFound } from 'next/navigation'
+import ChatClient from './ChatClient' // Imports the file we just made
 
-import { useState, useRef, useEffect } from 'react'
-import { useParams } from 'next/navigation'
-import { sendMessage } from '@/app/actions'
-import { Wifi, Thermometer, Info, Send, Loader2, MapPin } from 'lucide-react'
-import ReactMarkdown from 'react-markdown' // <--- NEW IMPORT
-import remarkGfm from 'remark-gfm'         // <--- NEW IMPORT
+// 1. Define Props (params is a Promise in Next.js 15)
+type Props = {
+  params: Promise<{ roomId: string }>
+}
 
-type Message = { id: string; role: 'user' | 'model'; content: string }
+export default async function RoomPage({ params }: Props) {
+  const { roomId } = await params
 
-export default function RoomChatPage() {
-  const params = useParams()
-  const roomId = params.roomId as string 
+  // 2. Fetch the Room Name securely on the server
+  const { data: room } = await supabaseAdmin
+    .from('rooms')
+    .select('name')
+    .eq('slug', roomId)
+    .single()
 
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 'welcome', role: 'model', content: 'Welcome! I am your digital concierge. How can I help you today?' }
-  ])
-  
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => { 
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) 
-  }, [messages])
-
-  async function handleSend(text: string) {
-    if (!text.trim() || isLoading) return
-    
-    const tempId = crypto.randomUUID()
-    const userMsg: Message = { id: tempId, role: 'user', content: text }
-    setMessages(prev => [...prev, userMsg])
-    setInput('')
-    setIsLoading(true)
-
-    try {
-      const result = await sendMessage(roomId, text, messages)
-
-      if (!result.success) {
-        throw new Error(result.response || "Unknown error")
-      }
-
-      const aiId = crypto.randomUUID()
-      const aiMsg: Message = { id: aiId, role: 'model', content: result.response }
-      setMessages(prev => [...prev, aiMsg])
-
-    } catch (error) {
-      console.error("Chat Error:", error)
-      const errorId = crypto.randomUUID()
-      setMessages(prev => [...prev, { 
-        id: errorId, 
-        role: 'model', 
-        content: "⚠️ System Offline: Please refresh the page." 
-      }])
-    } finally {
-      setIsLoading(false)
-    }
+  // If no room found, show 404
+  if (!room) {
+    notFound()
   }
 
-  const quickActions = [
-    { icon: Wifi, label: 'Wifi', prompt: 'What is the wifi password?' },
-    { icon: Thermometer, label: 'AC', prompt: 'How do I use the AC?' },
-    { icon: Info, label: 'Food', prompt: 'What are the top 3 food recommendations nearby?' }, // <--- Changed for demo
-  ]
-
-  return (
-    <div className="flex flex-col h-[100dvh] bg-slate-50 font-sans max-w-md mx-auto shadow-2xl overflow-hidden relative">
-      
-      {/* Header */}
-      <header className="flex-none bg-white p-4 border-b flex justify-between items-center z-10 shadow-sm">
-        <div>
-          <h1 className="font-bold text-slate-900 capitalize">{roomId.replace('-', ' ')}</h1>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs text-slate-500 font-medium">Concierge Online</span>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Chat Area */}
-      <main className="flex-1 overflow-y-auto p-4 space-y-6 bg-white">
-        
-        {/* Quick Buttons */}
-        <div className="grid grid-cols-3 gap-3">
-          {quickActions.map((action) => (
-            <button 
-              key={action.label}
-              onClick={() => handleSend(action.prompt)}
-              className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col items-center gap-2 active:scale-95 transition-transform hover:bg-slate-100"
-            >
-              <action.icon className="w-5 h-5 text-slate-700" />
-              <span className="text-xs font-semibold text-slate-600">{action.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Messages */}
-        <div className="space-y-4 pb-2">
-          {messages.map((m) => (
-            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                m.role === 'user' 
-                  ? 'bg-black text-white rounded-tr-none' 
-                  : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200'
-              }`}>
-                {/* --- NEW: MARKDOWN RENDERER --- */}
-                {m.role === 'user' ? (
-                   <span>{m.content}</span>
-                ) : (
-                  <div className="markdown-content">
-                    <ReactMarkdown 
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        // 1. Make links blue and open in new tab
-                        a: ({node, ...props}) => (
-                          <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold hover:text-blue-800 flex items-center gap-1 inline-flex">
-                             {props.children} <MapPin className="w-3 h-3" />
-                          </a>
-                        ),
-                        // 2. Make images rounded and fit the bubble
-                        img: ({node, ...props}) => (
-                          <img {...props} className="rounded-lg mt-2 mb-1 w-full h-40 object-cover border border-slate-200" />
-                        ),
-                        // 3. Handle lists nicely
-                        ul: ({node, ...props}) => <ul {...props} className="list-disc pl-4 my-2 space-y-1" />,
-                        ol: ({node, ...props}) => <ol {...props} className="list-decimal pl-4 my-2 space-y-1" />
-                      }}
-                    >
-                      {m.content}
-                    </ReactMarkdown>
-                  </div>
-                )}
-                {/* ----------------------------- */}
-              </div>
-            </div>
-          ))}
-          
-          {isLoading && (
-            <div className="flex justify-start">
-               <div className="bg-slate-50 border px-4 py-3 rounded-2xl rounded-tl-none">
-                 <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-               </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="p-3 bg-white border-t border-slate-100 z-10">
-        <form 
-          onSubmit={(e) => { e.preventDefault(); handleSend(input); }}
-          className="flex gap-2 relative"
-        >
-          <input 
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question..."
-            // I added 'text-slate-900' below so your typing is black and visible
-            className="flex-1 bg-slate-100 text-slate-900 rounded-full px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-black/5 placeholder:text-slate-400"
-          />
-          <button 
-            type="submit"
-            aria-label="Send Message" 
-            disabled={isLoading || !input.trim()} 
-            className="absolute right-2 top-1.5 bg-black text-white p-2 rounded-full hover:bg-slate-800 disabled:opacity-50 transition-colors"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
-      </footer>
-    </div>
-  )
+  // 3. Render the Client Component with the correct Name
+  return <ChatClient roomId={roomId} roomName={room.name} />
 }
