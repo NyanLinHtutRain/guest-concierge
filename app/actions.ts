@@ -13,6 +13,12 @@ type Message = {
   id?: string
 }
 
+type GalleryItem = {
+  id: string
+  label: string
+  url: string
+}
+
 // --- HELPER: Parse "One Box" Questions into JSON ---
 function parseFaqData(formData: FormData) {
   const rawText = formData.get('faq_text') as string || ''
@@ -38,7 +44,7 @@ export async function getRoomPublicInfo(slug: string) {
   return room
 }
 
-// --- 2. CHATBOT FUNCTION (UPDATED INTELLIGENCE) ---
+// --- 2. CHATBOT FUNCTION (UPDATED WITH VISUALS) ---
 export async function sendMessage(roomId: string, message: string, history: Message[]) {
   try {
     const { data: room, error } = await supabaseAdmin
@@ -57,7 +63,20 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       parts: [{ text: msg.content }]
     })).filter((_, i) => i !== 0 || history[0].role !== 'model')
 
-    // --- NEW "SMART HYBRID" PROMPT ---
+    // --- GENERATE VISUAL CONTEXT ---
+    let visualContext = ""
+    // Check if gallery_payload exists and has items
+    if (room.gallery_payload && Array.isArray(room.gallery_payload) && room.gallery_payload.length > 0) {
+        visualContext = `
+        [VISUAL INSTRUCTIONS AVAILABLE]
+        I have provided you with images for the following items. 
+        **RULE:** If the user asks about these specific items (or context implies them), you MUST display the image using Markdown: ![Label](Url).
+        
+        ${room.gallery_payload.map((item: GalleryItem) => `- Item: "${item.label}" -> Image: ${item.url}`).join('\n')}
+        `
+    }
+
+    // --- SMART HYBRID PROMPT ---
     const systemPrompt = `
       You are the Concierge for "${room.name}".
       
@@ -67,11 +86,13 @@ export async function sendMessage(roomId: string, message: string, history: Mess
       - AC Guide: ${room.ac_guide}
       - House Rules: ${room.rules}
       
+      ${visualContext}
+
       [HANDBOOK & DETAILS - PRIORITY #2]
       ${room.guidebook}
 
       [OPERATING INSTRUCTIONS]
-      1. **Property Questions:** If the user asks about the room (keys, wifi, inventory, appliances), check the KNOWLEDGE BASE first. 
+      1. **Property Questions:** If the user asks about the room (keys, wifi, inventory, appliances), check the KNOWLEDGE BASE and VISUALS first. 
          - If the info is there -> Answer it.
          - If the info is MISSING -> Do NOT guess. Say: "I don't have that specific detail in my handbook, please reach out to the host directly."
 
@@ -108,7 +129,82 @@ export async function sendMessage(roomId: string, message: string, history: Mess
   }
 }
 
-// --- 3. CREATE ROOM ---
+// --- 3. UPLOAD VISUAL INSTRUCTION (NEW) ---
+export async function addGalleryItem(formData: FormData) {
+    'use server'
+    const slug = formData.get('slug') as string
+    const label = formData.get('label') as string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const file = formData.get('file') as any
+
+    if (!file || !label || !slug) return { success: false, message: "Missing fields" }
+
+    // 1. Upload to Supabase Storage
+    // Ensure you created the 'instructions' bucket in Supabase Dashboard!
+    const fileName = `${slug}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`
+    
+    const { error: uploadError } = await supabaseAdmin
+        .storage
+        .from('instructions')
+        .upload(fileName, file, { contentType: file.type, upsert: true })
+
+    if (uploadError) {
+        console.error("Upload Error:", uploadError)
+        return { success: false, message: "Upload failed" }
+    }
+
+    // 2. Get Public URL
+    const { data: urlData } = supabaseAdmin
+        .storage
+        .from('instructions')
+        .getPublicUrl(fileName)
+
+    if (!urlData) {
+        return { success: false, message: "Could not get public URL" }
+    }
+
+    const publicUrl = urlData.publicUrl
+
+    // 3. Update Database (Append to JSON array)
+    const { data: room } = await supabaseAdmin.from('rooms').select('gallery_payload').eq('slug', slug).single()
+    const currentGallery = room?.gallery_payload || []
+    
+    const newItem = { id: crypto.randomUUID(), label, url: publicUrl }
+    const updatedGallery = [...currentGallery, newItem]
+
+    const { error: dbError } = await supabaseAdmin
+        .from('rooms')
+        .update({ gallery_payload: updatedGallery })
+        .eq('slug', slug)
+
+    if (dbError) {
+        console.error("DB Error:", dbError)
+        return { success: false, message: "Database save failed" }
+    }
+
+    revalidatePath(`/edit/${slug}`)
+    return { success: true, message: "Uploaded!" }
+}
+
+// --- 4. DELETE VISUAL INSTRUCTION (NEW) ---
+export async function deleteGalleryItem(slug: string, itemId: string) {
+    'use server'
+    
+    const { data: room } = await supabaseAdmin.from('rooms').select('gallery_payload').eq('slug', slug).single()
+    const currentGallery = room?.gallery_payload || []
+
+    // Filter out the item
+    const updatedGallery = currentGallery.filter((item: GalleryItem) => item.id !== itemId)
+
+    await supabaseAdmin
+        .from('rooms')
+        .update({ gallery_payload: updatedGallery })
+        .eq('slug', slug)
+
+    revalidatePath(`/edit/${slug}`)
+}
+
+// --- 5. CREATE ROOM ---
 export async function createRoom(formData: FormData) {
   'use server'
   
@@ -146,7 +242,8 @@ export async function createRoom(formData: FormData) {
     logo_url,
     primary_color,
     guidebook: guidebookText,
-    faq_payload
+    faq_payload,
+    gallery_payload: [] // Initialize empty
   })
 
   if (error) {
@@ -157,7 +254,7 @@ export async function createRoom(formData: FormData) {
   redirect('/')
 }
 
-// --- 4. UPDATE ROOM ---
+// --- 6. UPDATE ROOM ---
 export async function updateRoom(formData: FormData) {
   'use server'
   
