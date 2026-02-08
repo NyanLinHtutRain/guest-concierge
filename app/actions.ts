@@ -65,13 +65,17 @@ export async function sendMessage(roomId: string, message: string, history: Mess
 
     // --- GENERATE VISUAL CONTEXT ---
     let visualContext = ""
-    // Check if gallery_payload exists and has items
-    if (room.gallery_payload && Array.isArray(room.gallery_payload) && room.gallery_payload.length > 0) {
+    if (room.gallery_payload && Array.isArray(room.gallery_payload) && room.gallery_payload.length > 0) 
+      {
         visualContext = `
         [VISUAL INSTRUCTIONS AVAILABLE]
         I have provided you with images for the following items. 
-        **RULE:** If the user asks about these specific items (or context implies them), you MUST display the image using Markdown: ![Label](Url).
         
+        **RULES for Images:**
+        1. If the user asks about a specific item, display its image: ![Label](Url).
+        2. **SEQUENCES:** If the user asks about a process (like "How do I check in?" or "How to enter?"), and you see items labeled as "Step 1", "Step 2", etc., you MUST display **ALL** of them in order.
+        
+        [List of Images]:
         ${room.gallery_payload.map((item: GalleryItem) => `- Item: "${item.label}" -> Image: ${item.url}`).join('\n')}
         `
     }
