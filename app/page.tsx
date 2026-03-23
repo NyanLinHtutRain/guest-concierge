@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { supabaseAdmin } from "@/utils/supabase-admin";
 import { MapPin, QrCode, ShieldCheck, Pencil, Trash2, MessageSquare } from "lucide-react";
